@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trialpipe · 实验数据管道仪表盘</title>
+<style>
+  :root {
+    --bg: #0f141b; --panel: #171e28; --panel2: #1d2632;
+    --line: #2a3646; --text: #e6ebf2; --muted: #93a1b3;
+    --accent: #5db0ff; --good: #4cc38a; --warn: #e8b04b; --bad: #ef6f6f;
+    --purple: #b18cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+  }
+  header {
+    padding: 18px 28px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    background: linear-gradient(180deg, #141b25, #0f141b);
+  }
+  header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .svc { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .pill {
+    padding: 3px 10px; border-radius: 999px; font-size: 12px;
+    border: 1px solid var(--line); background: var(--panel2);
+    color: var(--muted);
+  }
+  .pill.ok { color: var(--good); border-color: #2c5b45; }
+  .pill.bad { color: var(--bad); border-color: #6b3535; }
+  main { padding: 22px 28px 60px; max-width: 1280px; margin: 0 auto; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  section.card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  section.card h2 {
+    font-size: 14px; margin: 0 0 12px; color: var(--accent);
+    text-transform: uppercase; letter-spacing: .8px;
+  }
+  .note {
+    border-left: 3px solid var(--warn); background: #241f12;
+    padding: 10px 14px; border-radius: 0 8px 8px 0; color: #f0d9a8;
+    font-size: 13px; margin: 0 0 16px;
+  }
+  .note.causal { border-color: var(--purple); background: #1d1830; color: #d6c8ff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tag {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+  }
+  .tag.approved { background: #173d2c; color: var(--good); }
+  .tag.draft { background: #2c3a4d; color: var(--accent); }
+  .tag.interrupted { background: #4a3413; color: var(--warn); }
+  .tag.superseded { background: #332a44; color: var(--purple); }
+  .tag.T, .tag.C { background: #243040; color: var(--text); }
+  .ci { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .bar {
+    height: 8px; border-radius: 4px; background: var(--panel2);
+    position: relative; margin-top: 6px; min-width: 120px;
+  }
+  .bar .lo, .bar .pt { position: absolute; top: -3px; width: 2px; height: 14px; }
+  .bar .lo { background: var(--muted); }
+  .bar .pt { background: var(--accent); width: 3px; }
+  .bar .track { position: absolute; top: 2px; height: 4px; background: var(--accent); opacity: .55; border-radius: 2px; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: #1c3a57; border-color: #2c5d8c; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  .hash { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; }
+  details { border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; background: var(--panel2); }
+  summary { cursor: pointer; padding: 9px 12px; color: var(--accent); font-size: 13px; }
+  details .body { padding: 0 12px 12px; }
+  .blocked {
+    border: 1px dashed var(--bad); background: #2b1718;
+    border-radius: 10px; padding: 12px 14px; color: #ffc9c9;
+  }
+  .allowed {
+    border: 1px solid #2c5b45; background: #12241c;
+    border-radius: 10px; padding: 12px 14px; color: #bfeedb;
+  }
+  .muted { color: var(--muted); }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin: 6px 0 0; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
+  .flow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; color:var(--muted); font-size:12px; margin-bottom:16px; }
+  .flow b { color: var(--text); }
+  .flow .arrow { color: var(--accent); }
+  select, input {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 9px; font-size: 13px;
+  }
+  .toast {
+    position: fixed; right: 22px; bottom: 22px; max-width: 420px;
+    background: #22303f; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 16px; display: none; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  }
+  .toast.err { border-color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>trialpipe 实验数据管道</h1>
+  <span class="sub">先冻结样本 · 后补结局分版 · 区间估计 · 不训练模型 · 不宣称因果</span>
+  <div class="svc" id="svcPills"></div>
+</header>
+
+<main>
+  <div class="flow">
+    <b>分组接入 :8101</b> <span class="arrow">→</span>
+    只追加哈希链台账 <span class="arrow">→</span>
+    <b>样本冻结器 :8102</b> <span class="arrow">→</span>
+    不可变清单 <span class="arrow">→</span>
+    <b>统计报告 :8103</b> <span class="arrow">→</span>
+    分版结局 / 批准 / 还原 / 比较前提
+  </div>
+
+  <div class="note causal">
+    因果声明边界：本页所有区间（Wilson / Newcombe / Welch-t / bootstrap）
+    只量化估计的<strong>抽样不确定性</strong>。除非随机分配且识别假设成立，
+    观察性数据<strong>不能</strong>被解释为处理对结局的因果效应；
+    系统也不包含任何模型训练。
+  </div>
+
+  <div class="toolbar">
+    <button class="primary" onclick="refreshAll()">刷新全部</button>
+    <button onclick="loadEvents()">查看台账事件</button>
+    <button onclick="loadManifests()">查看冻结清单</button>
+    <button onclick="loadReports()">查看报告</button>
+  </div>
+
+  <div class="grid g2">
+    <section class="card">
+      <h2>① 台账与服务状态</h2>
+      <div id="ledgerBox" class="muted">点击“刷新全部”加载。</div>
+    </section>
+
+    <section class="card">
+      <h2>② 冻结样本清单（人群不可变）</h2>
+      <div id="manifestBox" class="muted">加载中…</div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <h2>③ 报告与区间结果</h2>
+    <div class="legend">
+      <span><i style="background:var(--accent)"></i>点估计</span>
+      <span><i style="background:var(--muted)"></i>95% 置信区间端点</span>
+      <span>状态标签区分 草稿 / 已批准 / 已中断 / 已被取代</span>
+    </div>
+    <div id="reportBox" class="muted" style="margin-top:10px">加载中…</div>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>④ 比较前提（不同人群禁止直接相减）</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <label>报告 A <select id="cmpA"></select></label>
+      <label>报告 B <select id="cmpB"></select></label>
+      <button onclick="runCompare()">检查比较前提</button>
+    </div>
+    <div id="compareBox" class="muted">选择两份报告后点击检查。</div>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>⑤ 逐样本解释（报告结果如何由每个人构成）</h2>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <label>报告 <select id="explainSel"></select></label>
+      <button onclick="loadExplain()">生成逐样本解释</button>
+    </div>
+    <div id="explainBox" class="muted">选择报告后生成。</div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const PORTS = { intake: 8101, freezer: 8102, reporting: 8103 };
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, isErr) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "toast" + (isErr ? " err" : "");
+  t.style.display = "block";
+  setTimeout(() => (t.style.display = "none"), 4200);
+}
+
+async function api(port, path, opts) {
+  const resp = await fetch(`http://127.0.0.1:${port}${path}`, opts);
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data;
+}
+const post = (port, path, body) =>
+  api(port, path, { method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body) });
+
+const pct = (x) => (x === null || x === undefined || Number.isNaN(x))
+  ? "—" : (x * 100).toFixed(1) + "%";
+const fixed = (x, d = 3) => (x === null || x === undefined || Number.isNaN(x))
+  ? "—" : Number(x).toFixed(d);
+const short = (h) => h ? h.slice(0, 10) + "…" : "—";
+
+async function checkHealth() {
+  const box = $("svcPills");
+  box.innerHTML = "";
+  for (const [name, port] of Object.entries(PORTS)) {
+    const pill = document.createElement("span");
+    pill.className = "pill";
+    try {
+      await api(port, "/health");
+      pill.classList.add("ok");
+      pill.textContent = `● ${name} :${port}`;
+    } catch {
+      pill.classList.add("bad");
+      pill.textContent = `✕ ${name} :${port} 离线`;
+    }
+    box.appendChild(pill);
+  }
+}
+
+async function loadEvents() {
+  const data = await api(PORTS.intake, "/events");
+  const typeCount = {};
+  data.events.forEach((e) => (typeCount[e.type] = (typeCount[e.type] || 0) + 1));
+  $("ledgerBox").innerHTML = `
+    <div class="kv">
+      <span class="k">事件总数</span><span>${data.event_count}</span>
+      <span class="k">哈希链验真</span>
+      <span style="color:var(--good)">${data.verified ? "✓ 完整" : "✗ 断裂"}</span>
+      <span class="k">链头哈希</span><span class="hash">${data.head_hash}</span>
+      <span class="k">事件构成</span><span>${
+        Object.entries(typeCount).map(([k, v]) => `${k}×${v}`).join("，")}</span>
+    </div>
+    <details><summary>展开全部 ${data.event_count} 条只追加事件</summary>
+      <div class="body"><table><thead><tr>
+        <th>seq</th><th>type</th><th>主体/内容</th><th>时间/版本</th></tr></thead>
+      <tbody>${data.events.map((e) => `
+        <tr><td class="num">${e.seq}</td><td>${e.type}</td>
+        <td class="mono">${eventSubject(e)}</td>
+        <td class="mono">${e.assigned_at || e.enrolled_at || e.withdrawn_at
+          || e.revised_at || (e.version ? "v" + e.version + " @ " + e.as_of : "")}</td>
+        </tr>`).join("")}</tbody></table></div></details>`;
+}
+
+function eventSubject(e) {
+  if (e.type === "id_correction")
+    return `${e.old_subject_id} → ${e.new_subject_id}（${e.reason}）`;
+  if (e.type === "group_revision")
+    return `${e.subject_id}: ${e.old_group} → ${e.new_group}（${e.reason}）`;
+  if (e.type === "outcome")
+    return `${e.subject_id} ${e.outcome_name}=${e.value}`;
+  if (e.type === "withdrawal") return `${e.subject_id}（${e.reason}）`;
+  return `${e.subject_id}${e.group ? " → " + e.group : ""}`;
+}
+
+async function loadManifests() {
+  const data = await api(PORTS.freezer, "/manifests");
+  if (!data.manifests.length) {
+    $("manifestBox").innerHTML = '<span class="muted">尚无冻结清单。</span>';
+    return;
+  }
+  $("manifestBox").innerHTML = data.manifests.map((m) => `
+    <details><summary>${m.manifest_id} · as_of ${m.as_of} · n=${m.n_members}
+      （${Object.entries(m.group_counts).map(([g, n]) => g + "=" + n).join("，")}）</summary>
+      <div class="body">
+        <div class="kv">
+          <span class="k">研究</span><span>${m.study_id}</span>
+          <span class="k">清单哈希</span><span class="hash">${m.ledger_head_hash}</span>
+          <span class="k">不可变保证</span>
+          <span>冻结后追加的退出/修订/结局均不改变本清单成员与分组</span>
+        </div>
+        <button onclick="showManifestMembers('${m.manifest_id}')">查看成员与排除理由</button>
+        <div id="mm-${m.manifest_id}" style="margin-top:10px"></div>
+      </div></details>`).join("");
+}
+
+async function showManifestMembers(id) {
+  const m = await api(PORTS.freezer, `/manifests/${id}`);
+  $("mm-" + id).innerHTML = `
+    <table><thead><tr><th>受试者</th><th>冻结分组</th><th>入组时点</th>
+      <th>冻结时退出时点</th></tr></thead><tbody>
+    ${m.members.map((x) => `<tr><td class="mono">${x.subject_id}
+        ${x.id_aliases_frozen.length ? '<span class="muted">（别名: '
+          + x.id_aliases_frozen.join(", ") + "）</span>" : ""}</td>
+      <td><span class="tag ${x.group_frozen}">${x.group_frozen}</span></td>
+      <td class="mono">${x.enrolled_at}</td>
+      <td class="mono">${x.withdrawn_at_freeze || "—"}</td></tr>`).join("")}
+    </tbody></table>
+    ${m.exclusions.length ? `<p class="muted">排除：</p><table>
+      <thead><tr><th>受试者</th><th>原因码</th><th>说明</th></tr></thead><tbody>
+      ${m.exclusions.map((x) => `<tr><td class="mono">${x.subject_id}</td>
+        <td>${x.reason}</td><td class="muted">${x.detail}</td></tr>`).join("")}
+      </tbody></table>` : '<p class="muted">无排除。</p>'}`;
+}
+
+function ciBar(lo, hi, point, domain) {
+  const [dlo, dhi] = domain;
+  const pos = (v) => ((v - dlo) / (dhi - dlo)) * 100;
+  return `<div class="bar" title="CI [${fixed(lo)}, ${fixed(hi)}] 点估计 ${fixed(point)}">
+      <div class="track" style="left:${Math.max(0, pos(lo))}%;
+        width:${Math.min(100, pos(hi)) - Math.max(0, pos(lo))}%"></div>
+      <div class="lo" style="left:${Math.max(0, Math.min(100, pos(lo)))}%"></div>
+      <div class="lo" style="left:${Math.max(0, Math.min(100, pos(hi)))}%"></div>
+      <div class="pt" style="left:${Math.max(0, Math.min(100, pos(point)))}%"></div>
+    </div>`;
+}
+
+async function loadReports() {
+  const data = await api(PORTS.reporting, "/reports");
+  const selA = $("cmpA"), selB = $("cmpB"), selE = $("explainSel");
+  [selA, selB, selE].forEach((s) => (s.innerHTML = ""));
+  data.reports.forEach((r) => {
+    [selA, selB, selE].forEach((s) => {
+      const o = document.createElement("option");
+      o.value = r.report_id;
+      o.textContent = `${r.report_id.slice(0, 8)}… ${r.outcome_name} v${r.outcome_version} [${r.status}]`;
+      s.appendChild(o);
+    });
+  });
+  if (data.reports.length >= 2) selB.selectedIndex = 1;
+
+  if (!data.reports.length) {
+    $("reportBox").innerHTML = '<span class="muted">尚无报告。</span>';
+    return;
+  }
+  const full = await Promise.all(
+    data.reports.map((r) => api(PORTS.reporting, `/reports/${r.report_id}`)));
+  $("reportBox").innerHTML = full.map(renderReport).join("");
+}
+
+function renderReport(r) {
+  const res = r.result;
+  let body;
+  if (r.status === "interrupted" || !res) {
+    body = `<div class="blocked">计算中断于 ${r.interruption?.stage || "?"}：
+      ${r.interruption?.reason || ""}<br>输入快照已固定（${short(r.input_snapshot_hash)}），
+      可从同一输入确定性复算。</div>`;
+  } else {
+    const rows = Object.entries(res.groups).map(([g, s]) => `
+      <tr><td><span class="tag ${g}">${g}</span></td>
+      <td class="num">${s.n}</td>
+      ${res.outcome_type === "binary"
+        ? `<td class="num">${s.events}/${s.n} = ${pct(s.risk)}</td>
+           <td class="num ci">[${pct(s.ci_low)}, ${pct(s.ci_high)}]</td>`
+        : `<td class="num">${fixed(s.mean, 2)} (SD ${fixed(s.sd, 2)})</td>
+           <td class="num ci">[${fixed(s.ci_low, 2)}, ${fixed(s.ci_high, 2)}]</td>`}
+      </tr>`).join("");
+    const d = res.difference;
+    const bin = res.outcome_type === "binary";
+    body = `
+      <table><thead><tr><th>分组</th><th class="num">n</th>
+        <th class="num">${bin ? "事件率" : "均值"}</th>
+        <th class="num">95% 区间</th></tr></thead><tbody>${rows}</tbody></table>
+      <p style="margin:12px 0 4px"><b>对比 ${d.contrast}</b>
+        （${d.ci_method}${d.welch_df ? "，df=" + fixed(d.welch_df, 2) : ""}）</p>
+      <div class="kv">
+        <span class="k">点估计</span><span>${bin ? pct(d.estimate) : fixed(d.estimate, 3)}</span>
+        <span class="k">95% 区间</span><span class="ci">[${bin
+          ? pct(d.ci_low) + ", " + pct(d.ci_high)
+          : fixed(d.ci_low, 3) + ", " + fixed(d.ci_high, 3)}]</span>
+        <span class="k">双侧 p</span><span>${fixed(d.p_value, 4)}</span>
+      </div>
+      ${ciBar(d.ci_low, d.ci_high, d.estimate, bin ? [-0.6, 1.0] : diffDomain(res))}
+      ${d.bootstrap ? `<p class="muted" style="margin-top:8px">
+        确定性 bootstrap 核对（seed=${d.bootstrap.seed}, reps=${d.bootstrap.reps}）：
+        [${fixed(d.bootstrap.ci_low, 2)}, ${fixed(d.bootstrap.ci_high, 2)}]，
+        仅作敏感性核对，非主方法。</p>` : ""}
+      <p class="muted" style="font-size:12px">${res.causal_note}</p>`;
+  }
+  return `<details open><summary>
+      <span class="tag ${r.status}">${r.status}</span>
+      报告 ${r.report_id} · ${r.outcome_name} v${r.outcome_version} ·
+      清单 ${r.manifest_id.slice(0, 8)}… · n=${r.n_analyzed}
+      ${r.n_missing_outcomes ? `· 缺结局 ${r.n_missing_outcomes} 人（未插补）` : ""}
+      ${r.superseded_by ? `· 被 ${r.superseded_by.slice(0, 8)}… 取代` : ""}
+    </summary><div class="body">
+      <div class="kv" style="margin-bottom:10px">
+        <span class="k">人群指纹</span><span class="hash">${r.population_fingerprint}</span>
+        <span class="k">输入快照</span><span class="hash">${r.input_snapshot_hash}</span>
+      </div>
+      ${body}
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="restoreInputs('${r.report_id}')">还原原始输入</button>
+        <button onclick="jumpExplain('${r.report_id}')">逐样本解释</button>
+      </div>
+      <div id="inp-${r.report_id}" style="margin-top:10px"></div>
+    </div></details>`;
+}
+
+function diffDomain(res) {
+  const d = res.difference;
+  const pad = Math.max(1, (d.ci_high - d.ci_low) * 0.4);
+  return [d.ci_low - pad, d.ci_high + pad];
+}
+
+async function restoreInputs(id) {
+  const snap = await api(PORTS.reporting, `/reports/${id}/inputs`);
+  $("inp-" + id).innerHTML = `<table><thead><tr>
+      <th>受试者</th><th>冻结分组</th><th>取值</th><th>结局事件 seq</th>
+      <th>结局 as_of</th></tr></thead><tbody>
+    ${snap.analysis_rows.map((r) => `<tr>
+      <td class="mono">${r.subject_id}
+        ${r.id_changed_after_freeze ? '<span class="muted">（现 ' + r.resolved_id + '）</span>' : ""}</td>
+      <td><span class="tag ${r.group}">${r.group}</span></td>
+      <td class="num">${r.value}</td>
+      <td class="num">${r.outcome_event_seq}</td>
+      <td class="mono">${r.outcome_as_of}</td></tr>`).join("")}
+    </tbody></table>
+    <p class="muted" style="margin-top:8px">输入快照哈希校验通过：
+    旧报告可随时还原到批准时的原始逐样本输入，不被后续事件改写。</p>`;
+}
+
+function jumpExplain(id) {
+  $("explainSel").value = id;
+  loadExplain();
+  document.querySelector("#explainBox").scrollIntoView({ behavior: "smooth" });
+}
+
+async function loadExplain() {
+  const id = $("explainSel").value;
+  if (!id) return;
+  const data = await api(PORTS.reporting, `/reports/${id}/explain`);
+  $("explainBox").innerHTML = `<table><thead><tr>
+      <th>受试者</th><th>分组</th><th>取值</th><th>如何进入统计量</th></tr></thead><tbody>
+    ${data.explanations.map((e) => `<tr>
+      <td class="mono">${e.subject_id}
+        <div class="hash">事件 seq ${e.outcome_event_seq ?? "—"} · ${e.outcome_as_of ?? "—"}</div></td>
+      <td>${e.group ? `<span class="tag ${e.group}">${e.group}</span>` : "—"}</td>
+      <td class="num">${e.value ?? "缺失"}</td>
+      <td class="muted">${e.explanation}</td></tr>`).join("")}
+    </tbody></table>`;
+}
+
+async function runCompare() {
+  const a = $("cmpA").value, b = $("cmpB").value;
+  if (!a || !b) return toast("请先选择两份报告", true);
+  const premise = await post(PORTS.reporting, "/compare",
+    { report_id_a: a, report_id_b: b });
+  if (premise.same_frozen_population) {
+    const e = premise.side_by_side_effects || {};
+    $("compareBox").innerHTML = `<div class="allowed">
+      <b>同一冻结人群</b>（${premise.comparison_kind}）：可以并列对照。<br>
+      ${e ? `报告 A 点估计 ${fixed(e.a_estimate, 3)} 区间 [${fixed(e.a_ci[0], 3)}, ${fixed(e.a_ci[1], 3)}]<br>
+        报告 B 点估计 ${fixed(e.b_estimate, 3)} 区间 [${fixed(e.b_ci[0], 3)}, ${fixed(e.b_ci[1], 3)}]` : ""}
+      <p class="muted" style="margin-bottom:0">${premise.interpretation}</p></div>`;
+  } else {
+    $("compareBox").innerHTML = `<div class="blocked">
+      <b>⛔ 不同冻结人群 — 直接相减被拦截</b>
+      （blocked: ${premise.blocked_action}）
+      <div class="kv" style="margin-top:10px">
+        <span class="k">报告 A</span><span>${premise.report_a.manifest_id.slice(0, 10)}… ·
+          n=${premise.report_a.n_analyzed} · ${premise.report_a.outcome_name} v${premise.report_a.outcome_version}</span>
+        <span class="k">报告 B</span><span>${premise.report_b.manifest_id.slice(0, 10)}… ·
+          n=${premise.report_b.n_analyzed} · ${premise.report_b.outcome_name} v${premise.report_b.outcome_version}</span>
+      </div>
+      <p style="margin-bottom:0">${premise.interpretation}</p></div>
+      <div style="margin-top:10px" class="grid g2">
+        ${[premise.report_a, premise.report_b].map((x) => `
+          <div class="kv"><span class="k">报告</span><span class="mono">${x.report_id}</span>
+            <span class="k">清单</span><span class="mono">${x.manifest_id}</span>
+            <span class="k">状态</span><span>${x.status}</span>
+            <span class="k">分析人数</span><span>${x.n_analyzed}</span></div>`).join("")}
+      </div>`;
+  }
+}
+
+async function refreshAll() {
+  try {
+    await checkHealth();
+    await Promise.all([loadEvents(), loadManifests(), loadReports()]);
+    toast("已刷新");
+  } catch (err) {
+    toast("刷新失败：" + err.message, true);
+  }
+}
+refreshAll();
+</script>
+</body>
+</html>
